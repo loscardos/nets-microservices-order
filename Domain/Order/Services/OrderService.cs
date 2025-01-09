@@ -1,6 +1,8 @@
+using document_generator.Infrastructure.Helpers;
 using Microsoft.AspNetCore.Mvc;
 using OrderService.Constants.Event;
 using OrderService.Constants.Logger;
+using OrderService.Constants.Order;
 using OrderService.Domain.Order.Repositories;
 using OrderService.Infrastructure.Exceptions;
 using OrderService.Infrastructure.Dtos;
@@ -40,26 +42,22 @@ namespace OrderService.Domain.Order.Services
             string subject = _natsIntegration.Subject(NATsEventModuleEnum.INVENTORY, NATsEventActionEnum.GET_BY_IDS,
                 NATsEventStatusEnum.PROCESS);
 
-            Dictionary<string, object> data = new()
-            {
-                { "productName", dataCreate.ProductName }, { "quantity", dataCreate.Quantity },
-            };
-
             var reply = await _natsIntegration.PublishAndGetReply<object, object>(subject,
-                Utils.JsonSerialize(data));
+                Utils.JsonSerialize(dataCreate.ToNats()));
 
-            OrderCreateEventDto orderCreateEventDto = Utils.JsonDeserialize<OrderCreateEventDto>(reply.ToString());
-            
+            ResponseFormat orderCreateEventDto = Utils.JsonDeserialize<ResponseFormat>(reply.ToString());
+
             Models.Order createdOrder = await _orderQueryRepository.FindLastInserted();
 
             if (createdOrder == null)
                 throw new DataNotFoundException(OrderErrorMessage.ErrOrderNotFound);
 
-            createdOrder.Status = orderCreateEventDto.Status == "ERROR" ? "Rejected" : "Confirmed";
-            
+            createdOrder.Status = (!orderCreateEventDto.Success ? OrderStatus.REJECTED : OrderStatus.CONFIRMED)
+                .ToString();
+
             await _orderStoreRepository.Update(createdOrder.Id, createdOrder);
-            
-            if (orderCreateEventDto.Status == "ERROR")
+
+            if (!orderCreateEventDto.Success)
                 throw new BusinessException(orderCreateEventDto.Message);
         }
 

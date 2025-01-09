@@ -1,3 +1,4 @@
+using OrderService.Constants.Order;
 using System.Data.Entity;
 using System.Data.Entity.Infrastructure;
 using OrderService.Infrastructure.Databases;
@@ -20,7 +21,7 @@ namespace OrderService.Domain.Order.Repositories
                 ProductName = orderRepository.ProductName,
                 Quantity = orderRepository.Quantity,
                 UserId = orderRepository.UserId,
-                Status = "Pending"
+                Status = OrderStatus.PENDING.ToString()
             };
 
             await _context.Orders.AddAsync(newOrder);
