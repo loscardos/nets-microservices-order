@@ -8,8 +8,10 @@ using OrderService.Infrastructure.Exceptions;
 using OrderService.Infrastructure.Dtos;
 using OrderService.Domain.Order.Dtos;
 using OrderService.Domain.Order.Messages;
+using OrderService.Infrastructure.Helpers;
 using OrderService.Infrastructure.Integrations.NATs;
 using OrderService.Infrastructure.Shareds;
+using System.Net;
 
 namespace OrderService.Domain.Order.Services
 {
@@ -43,22 +45,23 @@ namespace OrderService.Domain.Order.Services
                 NATsEventStatusEnum.PROCESS);
 
             var reply = await _natsIntegration.PublishAndGetReply<object, object>(subject,
-                Utils.JsonSerialize(dataCreate.ToNats()));
+                Utils.JsonSerialize(new ApiResponseData<Models.Order>(HttpStatusCode.OK, dataCreate.ToNats())));
 
-            ResponseFormat orderCreateEventDto = Utils.JsonDeserialize<ResponseFormat>(reply.ToString());
+            ApiResponseData<ResponseFormat> replyData =
+                Utils.JsonDeserialize<ApiResponseData<ResponseFormat>>(reply.ToString());
 
             Models.Order createdOrder = await _orderQueryRepository.FindLastInserted();
 
             if (createdOrder == null)
                 throw new DataNotFoundException(OrderErrorMessage.ErrOrderNotFound);
 
-            createdOrder.Status = (!orderCreateEventDto.Success ? OrderStatus.REJECTED : OrderStatus.CONFIRMED)
+            createdOrder.Status = (!replyData.Data.Success ? OrderStatus.REJECTED : OrderStatus.CONFIRMED)
                 .ToString();
 
             await _orderStoreRepository.Update(createdOrder.Id, createdOrder);
 
-            if (!orderCreateEventDto.Success)
-                throw new BusinessException(orderCreateEventDto.Message);
+            if (!replyData.Data.Success)
+                throw new BusinessException(replyData.Data.Message);
         }
 
         public async Task<OrderResultDto> DetailById(Guid id)
